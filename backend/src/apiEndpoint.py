@@ -1,7 +1,14 @@
 from fastapi import FastAPI, Query
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+import os
+
 import pandas as pd
-from datetime import date, timedelta
+from datetime import datetime, date, timedelta
 import requests
+from requests.auth import HTTPBasicAuth
+from urllib.parse import quote
 from torch.nn import parameter
 from chatbot import ChatBot
 from predictionModel import PredictionModel
@@ -11,70 +18,91 @@ app = FastAPI()
 prediction = PredictionModel.getInstance()
 environment = ENV.getInstance()
 
+static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
+
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(os.path.join(static_dir, "favicon.ico"))
 
 PARAMETERS = {
-    "TS" : "temperature",
-    "ALLSKY_SFC_UVA" : "UVA index",
-    "WS2M" : "Wind speed",
-    "PRECTOTCORR" : "Precipitation",
-    "QV2M" : "Relative humidity",
-    "SNODP" : "Snow Depth"
+    "t2m": "t_2m:C",                        
+    "precip_h": "precip_1h:mm",       
+    "wind_speed": "wind_speed_10m:kmh",
+    "UVA":"uv:idx",
+    "snodb":"snow_depth:mm"      
 }
 
-START = date(2000, 1, 1)
-
-def statistics(
+async def statistics(
     lat: float = Query(..., ge=-90, le=90, description="Latitude (-90 to 90)"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude (-180 to 180)"),
     start_date: date = Query(..., description="Start date YYYY-MM-DD"),
     end_date: date = Query(..., description="End date YYYY-MM-DD")
 ):
     """
-    Fetch daily weather data from NASA POWER API for the specified coordinates and date range.
-    Includes temperature, wind, precipitation, radiation, UV, snow depth, and relative humidity.
+    Fetch daily weather data from Meteomatics API for the specified coordinates and date range.
+
+    Uses basic HTTP auth with the provided trial credentials. Returns a list of daily records.
     """
-    # Format dates
-    start_str = start_date.strftime("%Y%m%d")
-    end_str = end_date.strftime("%Y%m%d")
 
-    url = "https://power.larc.nasa.gov/api/temporal/daily/point"
+    # Meteomatics trial credentials (replace with your own)
+    METEO_USERNAME = "igadern_aya"
+    METEO_PASSWORD = "7U47m3882wgXSd8xm2EO"
 
-    # Add all parameters
-    params = {
-        "parameters": ",".join(PARAMETERS.keys()),
-        "community": "RE",
-        "longitude": lon,
-        "latitude": lat,
-        "start": start_str,
-        "end": end_str,
-        "format": "JSON"
-    }
+    # Generate list of hourly timestamps between start and end date
+    start_dt = datetime.combine(start_date, datetime.min.time())
+    end_dt = datetime.combine(end_date, datetime.max.time())
 
+    hours = []
+    cur = start_dt
+    while cur <= end_dt:
+        hours.append(cur.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        cur += timedelta(hours=1)
+
+    time_path = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    time_path += "--"
+    time_path += end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    time_path += ":PT24H"
+
+    # Properly URL-encode parameters 
+    meteoparams = ",".join([quote(v, safe=":") for v in PARAMETERS.values()])
+
+    # Build API URL
+    url = f"https://api.meteomatics.com/{time_path}/{meteoparams}/{lat},{lon}/json"
 
     try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
+        # Authenticate and send request
+        auth = HTTPBasicAuth(METEO_USERNAME, METEO_PASSWORD)
+        resp = requests.get(url, auth=auth, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
 
-        # Build dataframe
-        dates = pd.date_range(start=start_date, end=end_date, freq='D')
-        df = pd.DataFrame({'date': dates})
+        # Convert Meteomatics JSON to hourly DataFrame
+        df_daily = pd.DataFrame()
+        for series in data.get("data", []):
+            param = series.get("parameter")
+            points = series.get("coordinates", [])[0].get("dates", [])
+            times = [pd.to_datetime(p["date"]) for p in points]
+            values = [p.get("value") for p in points]
+            s = pd.Series(data=values, index=times, name=param)
+            df_daily = pd.concat([df_daily, s], axis=1)
 
-        for p in PARAMETERS.keys():
-            param_data = data["properties"]["parameter"].get(p)
-            if param_data:  # Some parameters might be missing for certain locations
-                df[p] = [param_data.get(date.strftime("%Y%m%d"), None) for date in df['date']]
-            else:
-                df[p] = None
+        print(df_daily)
 
-        df.set_index('date', inplace=True)
-        print(df)
-        return df.reset_index().to_dict(orient="records")
+        if df_daily.empty:
+            return {"error": "No data returned from Meteomatics for the requested range/parameters."}
+
+        # Format output
+        df_daily = df_daily.reset_index().rename(columns={"index": "date"})
+        df_daily["date"] = df_daily["date"].dt.date
+
+        return df_daily.to_dict(orient="records")
 
     except Exception as e:
         return {"error": str(e)}
 
-def formattedStatistics(
+async def formattedStatistics(
     lat: float = Query(..., ge=-90, le=90, description="Latitude (-90 to 90)"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude (-180 to 180)"),
     start_date: date = Query(..., description="Start date YYYY-MM-DD"),
@@ -84,7 +112,7 @@ def formattedStatistics(
     Takes the output of the Nasa API and prepare it for studying
     TODO: Continue implementing the function
     """
-    data = statistics(lat, lon, start_date, end_date)
+    data = await statistics(lat, lon, start_date, end_date)
     ret = [[] for i in range(len(PARAMETERS))]
     # for key in data:
     #     ret.append(data[key])
@@ -100,7 +128,7 @@ def formattedStatistics(
 
     return ret
 
-def formattedPredictions(
+async def formattedPredictions(
     lat: float = Query(..., ge=-90, le=90, description="Latitude (-90 to 90)"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude (-180 to 180)"),
     start_date: date = Query(..., description="Start date YYYY-MM-DD"),
@@ -109,22 +137,20 @@ def formattedPredictions(
     """
     Takes the output of the prediction model and make it usable for the model
     """
-    data = formattedStatistics(lat, lon, START, date.today())
-    point_forecast, quantile_forecast = prediction.predict(data, (end_date - date.today()).days)
-
+    data = await formattedStatistics(lat, lon, start_date, end_date)
 
     keys = list( PARAMETERS.keys() )
     point_forecast = {
-        keys[i] : point_forecast[i][:(end_date - start_date).days + 1] for i in range(len(keys))
+        keys[i] : data[i] for i in range(len(keys))
     }
 
-    return point_forecast, quantile_forecast
+    return point_forecast
 
 
 
 
 @app.get("/predict")
-def predict(
+async def predict(
     lat: float = Query(..., ge=-90, le=90, description="Latitude (-90 to 90)"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude (-180 to 180)"),
     start_date: date = Query(..., description="Start date YYYY-MM-DD"),
@@ -137,7 +163,8 @@ def predict(
     3. return the answer.
     """
     chat = ChatBot.getInstance()
-    point_forecast, quantile_forecast = formattedPredictions(lat, lon, start_date, end_date)
+    point_forecast = await formattedPredictions(lat, lon, start_date, end_date)
+    print(point_forecast)
     
     response = chat.askBot(point_forecast, activity)
     return {"response" : response};
