@@ -1,0 +1,30 @@
+# Ignore Python virtual environment and cache files
+/backend/bin/
+/backend/include/
+/backend/lib/
+/backend/lib64/
+/backend/share/
+/backend/pyvenv.cfg
+__pycache__/
+*.pyc
+
+# Ignore sensitive environment files
+.env
+
+# Ignore Nuxt.js build and dependency folders
+/frontend/node_modules/
+/frontend/.nuxt/
+/frontend/.output/
+/frontend/dist/
+
+# Ignore IDE and OS-specific files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
