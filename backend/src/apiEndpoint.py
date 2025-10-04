@@ -1,12 +1,15 @@
 from fastapi import FastAPI, Query
 import pandas as pd
-from datetime import date
+from datetime import date, timedelta
 import requests
+from torch.nn import parameter
 from chatbot import ChatBot
 from predictionModel import PredictionModel
+from env import ENV
 
 app = FastAPI()
 prediction = PredictionModel.getInstance()
+environment = ENV.getInstance()
 
 
 PARAMETERS = {
@@ -17,6 +20,8 @@ PARAMETERS = {
     "QV2M" : "Relative humidity",
     "SNODP" : "Snow Depth"
 }
+
+START = date(2000, 1, 1)
 
 def statistics(
     lat: float = Query(..., ge=-90, le=90, description="Latitude (-90 to 90)"),
@@ -37,7 +42,7 @@ def statistics(
     # Add all parameters
     params = {
         "parameters": ",".join(PARAMETERS.keys()),
-        "community": "AG",
+        "community": "RE",
         "longitude": lon,
         "latitude": lat,
         "start": start_str,
@@ -63,6 +68,7 @@ def statistics(
                 df[p] = None
 
         df.set_index('date', inplace=True)
+        print(df)
         return df.reset_index().to_dict(orient="records")
 
     except Exception as e:
@@ -79,18 +85,38 @@ def formattedStatistics(
     TODO: Continue implementing the function
     """
     data = statistics(lat, lon, start_date, end_date)
+    ret = [[] for i in range(len(PARAMETERS))]
+    # for key in data:
+    #     ret.append(data[key])
+    # print(ret)
+
+    idx = 0
+    for obj in data:
+        for key, val in obj.items():
+            if(key == "date"):
+                continue
+            ret[idx].append(val)
+            idx = (idx + 1) % len(PARAMETERS)
+
+    return ret
 
 def formattedPredictions(
     lat: float = Query(..., ge=-90, le=90, description="Latitude (-90 to 90)"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude (-180 to 180)"),
     start_date: date = Query(..., description="Start date YYYY-MM-DD"),
-    end_date: date = Query(..., description="End date YYYY-MM-DD")
+    end_date: date = Query(..., description="End date YYYY-MM-DD"),
 ):
     """
     Takes the output of the prediction model and make it usable for the model
     """
-    data = formattedStatistics(lat, lon, start_date, end_date)
-    point_forecast, quantile_forecast = prediction.predict(data, (end_date - start_date).days)
+    data = formattedStatistics(lat, lon, START, date.today())
+    point_forecast, quantile_forecast = prediction.predict(data, (end_date - date.today()).days)
+
+
+    keys = list( PARAMETERS.keys() )
+    point_forecast = {
+        keys[i] : point_forecast[i][:(end_date - start_date).days + 1] for i in range(len(keys))
+    }
 
     return point_forecast, quantile_forecast
 
@@ -111,9 +137,9 @@ def predict(
     3. return the answer.
     """
     chat = ChatBot.getInstance()
-    data = formattedPredictions(lat, lon, start_date, end_date)
+    point_forecast, quantile_forecast = formattedPredictions(lat, lon, start_date, end_date)
     
-    response = chat.askBot(data, activity)
+    response = chat.askBot(point_forecast, activity)
     return {"response" : response};
 
 @app.get("/statistics/{parameter}")

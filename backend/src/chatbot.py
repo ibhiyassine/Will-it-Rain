@@ -2,6 +2,9 @@ import pandas as pd
 import os
 from google import genai
 from google.genai import types
+from env import ENV
+
+environment = ENV.getInstance()
 
 class ChatBot:
 

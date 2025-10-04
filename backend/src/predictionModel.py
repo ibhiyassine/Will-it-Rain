@@ -42,7 +42,7 @@ class PredictionModel:
     def getInstance(cls):
         if(cls.predictionInstance is None):
             cls.predictionInstance = PredictionModel()
-        return cls
+        return cls.predictionInstance
 
 
     
