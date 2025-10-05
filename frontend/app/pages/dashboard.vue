@@ -159,10 +159,12 @@
     const selectedCoords = ref({ lat: null, lng: null })
 
     const activities = ref([
+        { label: 'Suggest an activity', value: 'auto' },
         { label: 'Outdoor Concert', value: 'concert' },
         { label: 'Hiking', value: 'hiking' },
         { label: 'Picnic', value: 'picnic' },
         { label: 'Marathon', value: 'marathon' },
+        { label: 'Swimming', value: 'swimming' },
         { label: 'Soccer Match', value: 'soccer' },
         { label: 'Photography', value: 'photography' },
     ])

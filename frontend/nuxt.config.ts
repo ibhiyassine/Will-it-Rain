@@ -5,7 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineNuxtConfig({
     compatibilityDate: '2025-07-15',
     devtools: { enabled: true },
-    modules: ['@nuxt/content', 'shadcn-nuxt', '@nuxtjs/leaflet'],
+    modules: ['@nuxt/content', 'shadcn-nuxt', '@nuxtjs/leaflet', '@nuxt-alt/markdown-it'],
     css: ['~/assets/css/main.css'],
     vite: {    
         plugins: [      
@@ -23,5 +23,5 @@ export default defineNuxtConfig({
      */
         componentDir: './app/components/ui',
     },
-
+    markdownit: { runtime: true, linkify: true, breaks: true }, // options forwarded to markdown-it
 })

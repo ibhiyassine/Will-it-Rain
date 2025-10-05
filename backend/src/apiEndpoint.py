@@ -11,13 +11,11 @@ from requests.auth import HTTPBasicAuth
 from urllib.parse import quote
 from torch.nn import parameter
 from chatbot import ChatBot
-from predictionModel import PredictionModel
 from env import ENV
 
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
-prediction = PredictionModel.getInstance()
 environment = ENV.getInstance()
 
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
@@ -57,6 +55,7 @@ async def statistics(
     start_date: date = Query(..., description="Start date YYYY-MM-DD"),
     end_date: date = Query(..., description="End date YYYY-MM-DD")
 ):
+
     """
     Fetch daily weather data from Meteomatics API for the specified coordinates and date range.
 
@@ -191,11 +190,8 @@ matplotlib.use("Agg")  # Use non-GUI backend
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-import os
 import pandas as pd
 
-from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse
 @app.get("/statistics/{parameter}")
 async def study(
     parameter: str,
