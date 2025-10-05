@@ -128,6 +128,13 @@
                     >
                         Predict
                     </Button>
+                    <Button :class="hasPrediction
+                            ? 'bg-blue-500 hover:bg-blue-600 cursor-pointer' 
+                            : 'hidden'"
+                            class="mx-2.5 px-6 text-lg"
+                    >
+                        <NuxtLink to="/statistics">Statistics</NuxtLink>
+                    </Button>
                 </section>
             </div>
         </footer>
@@ -139,6 +146,8 @@
     import RangeCalendar from '~/components/ui/range-calendar/RangeCalendar.vue'
     import Map from '~/components/Map.vue'
     import { today, getLocalTimeZone, fromDate } from '@internationalized/date'
+
+    const config = useRuntimeConfig();
 
     definePageMeta({
         middleware: 'auth',
@@ -211,6 +220,11 @@
     const isPredictionReady = ref(false)
     const predictionText = ref("")
 
+
+    const hasPrediction = computed(() => {
+        return isPredictionReady.value
+    })
+
     const onLocationChange = ({ lat, lng, address }) => {
         selectedCoords.value = { lat, lng }
         locationText.value = address
@@ -233,9 +247,9 @@
         const { start, end } = dateRange.value;
 
         // console.log(startDate)
-        console.log(selectedActivity.value)
+        // console.log(selectedActivity.value)
 
-        const baseUrl = 'http://127.0.0.1:8000/predict';
+        const baseUrl = `${config.public.backend}/predict`;
         const params = new URLSearchParams({
             lat: lat.toString(),
             lon: lng.toString(),
@@ -246,6 +260,7 @@
 
         const url = `${baseUrl}?${params.toString()}`;
 
+
         try {
             const response = await fetch(url, {
                 method: 'GET',
@@ -253,6 +268,38 @@
                     'Accept': 'application/json',
                 }
             });
+
+            // "t2m": "Temperature 2m (°C)",
+            // "precip_h": "Precipitation 1h (mm)",
+            // "wind_speed": "Wind Speed 10m (km/h)",
+            // "snodb": "Snow Depth (mm)"
+            let names = [
+                "t2m", "precip_h", "wind_speed", "snodb"
+            ]
+
+            const statJobs = names.map((element) => {
+                const secondUrl = `${config.public.backend}/statistics/${element}/`
+
+                const statParams = new URLSearchParams({
+                    lat: lat.toString(),
+                    lon: lng.toString(),
+                    start_date: start,
+                    end_date: end,
+                    activity: selectedActivity.value
+                });
+                const secUrl = `${secondUrl}?${statParams.toString()}`
+                console.log(secUrl)
+                return fetch(secUrl, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                    }
+                })
+            })
+
+            const statResults = await Promise.allSettled(statJobs)
+            console.log('Statistics fetch statuses:', statResults.map(r => r.status))
+
 
             if (!response.ok) {
                 const errorData = await response.json();

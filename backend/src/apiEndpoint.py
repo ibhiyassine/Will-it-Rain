@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import os
+import glob
 
 import pandas as pd
 from datetime import datetime, date, timedelta
@@ -38,14 +39,12 @@ PARAMETERS = {
     "t2m": "t_2m:C",                        
     "precip_h": "precip_1h:mm",       
     "wind_speed": "wind_speed_10m:kmh",
-    "UVA":"uv:idx",
     "snodb":"snow_depth:mm"      
 }
 DISPLAY_NAMES = {
     "t2m": "Temperature 2m (°C)",
     "precip_h": "Precipitation 1h (mm)",
     "wind_speed": "Wind Speed 10m (km/h)",
-    "UVA": "Ultraviolet Index",
     "snodb": "Snow Depth (mm)"
 }
 
@@ -254,6 +253,20 @@ async def study(
     plots = {}
     os.makedirs(static_dir, exist_ok=True)
 
+    # Directory where to delete .png files, use '.' for current directory
+    directory = "./static/"
+
+    # Find all .png files in the directory
+    png_files = glob.glob(os.path.join(directory, "*.png"))
+
+    # Remove each .png file
+    for file_path in png_files:
+        try:
+            os.remove(file_path)
+            print(f"Deleted: {file_path}")
+        except Exception as e:
+            print(f"Error deleting {file_path}: {e}")
+    
     # Line plot with mean, median, and point annotations
     plt.figure(figsize=(12, 6))
     sns.lineplot(x=dates, y=values, marker="o", color="b", label=f"{friendly_name}")

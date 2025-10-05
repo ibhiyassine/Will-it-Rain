@@ -24,4 +24,9 @@ export default defineNuxtConfig({
         componentDir: './app/components/ui',
     },
     markdownit: { runtime: true, linkify: true, breaks: true }, // options forwarded to markdown-it
+    runtimeConfig: {
+        public: {
+          backend: process.env.BACKEND_HOST,
+        }
+      }  
 })
