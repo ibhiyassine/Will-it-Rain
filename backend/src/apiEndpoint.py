@@ -14,6 +14,8 @@ from chatbot import ChatBot
 from predictionModel import PredictionModel
 from env import ENV
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
 prediction = PredictionModel.getInstance()
 environment = ENV.getInstance()
@@ -21,6 +23,14 @@ environment = ENV.getInstance()
 static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins (development only!)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():

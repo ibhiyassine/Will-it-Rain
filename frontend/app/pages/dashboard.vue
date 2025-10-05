@@ -95,24 +95,40 @@
                         <path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 15a4 4 0 01-4 4H8l-5 3V8a4 4 0 014-4h10a4 4 0 014 4v7z" />
                     </svg>
                 </div>
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-3 mb-1">
-                        <span class="text-base font-semibold text-gray-900 tracking-tight">Assistant Verdict</span>
-                        <span class="text-xs text-gray-500">Live updates from your selections</span>
+
+                <section class="w-full flex justify-between items-center">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-3 mb-1">
+                            <span class="text-base font-semibold text-gray-900 tracking-tight">Assistant Verdict</span>
+                            <span class="text-xs text-gray-500">Live updates from your selections</span>
+                        </div>
+
+                        <div v-if="isPredictionReady">
+                            {{ predictionText }}
+                        </div>
+                        <div v-else class="text-base text-gray-800 leading-relaxed flex items-center min-h-[1.75rem]">
+                            <template v-if="isPredictionLoading">
+                                <div class="verdict-loader">
+                                    <span class="verdict-dot verdict-dot--lg" style="animation-delay:-0.24s"></span>
+                                    <span class="verdict-dot verdict-dot--lg" style="animation-delay:-0.12s"></span>
+                                    <span class="verdict-dot verdict-dot--lg"></span>
+                                </div>
+                            </template>
+                            <template v-else>
+                                {{ verdictText }}
+                            </template>
+                        </div>
                     </div>
-                    <div class="text-base text-gray-800 leading-relaxed flex items-center min-h-[1.75rem]">
-                        <template v-if="isPreparing">
-                            <div class="verdict-loader">
-                                <span class="verdict-dot verdict-dot--lg" style="animation-delay:-0.24s"></span>
-                                <span class="verdict-dot verdict-dot--lg" style="animation-delay:-0.12s"></span>
-                                <span class="verdict-dot verdict-dot--lg"></span>
-                            </div>
-                        </template>
-                        <template v-else>
-                            {{ verdictText }}
-                        </template>
-                    </div>
-                </div>
+
+                    <Button :class="isPreparing && !predictButtonClicked
+                            ? 'bg-blue-500 hover:bg-blue-600 cursor-pointer' 
+                            : 'bg-blue-500/60 cursor-not-allowed hover:bg-blue-500/50'"
+                            class="mx-2.5 px-6 text-lg"
+                            @click="getPrediction"
+                    >
+                        Predict
+                    </Button>
+                </section>
             </div>
         </footer>
     </div>
@@ -131,11 +147,7 @@
     // Reactive data
     const tz = getLocalTimeZone()
     const start = today(tz)
-    const jsEnd = new Date()
-    jsEnd.setDate(jsEnd.getDate() + 7)
     const dateRange = ref({
-        start,
-        end: fromDate(jsEnd, tz),
     })
 
     const minDate = ref(start)
@@ -178,7 +190,7 @@
         const fromStr = dateRange.value.start.toDate(tz).toLocaleDateString()
         const toStr = dateRange.value.end.toDate(tz).toLocaleDateString()
         const actLabel = activities.value.find(a => a.value === selectedActivity.value)?.label || selectedActivity.value
-        return `Preparing a verdict for ${actLabel} at ${locationText.value} between ${fromStr} and ${toStr}…`
+        return "Click the predict button ;)"
     })
 
     const isPreparing = computed(() => {
@@ -188,8 +200,68 @@
         return hasLocation && hasDates && hasActivities
     })
 
+    const predictButtonClicked = ref(false)
+
+    const isPredictionLoading = computed(() => {
+        return isPreparing && predictButtonClicked.value;
+    })
+
+    const isPredictionReady = ref(false)
+    const predictionText = ref("")
+
     const onLocationChange = ({ lat, lng, address }) => {
         selectedCoords.value = { lat, lng }
         locationText.value = address
+        isPredictionReady.value = false;
+    }
+
+    async function getPrediction(){
+        predictButtonClicked.value = true; 
+
+        let prediction = await predictWeather();
+
+        isPredictionReady.value = true; 
+        predictionText.value = prediction.response;
+
+        predictButtonClicked.value = false; 
+    }
+
+    async function predictWeather() {
+        const { lat, lng } = selectedCoords.value;
+        const { start, end } = dateRange.value;
+
+        // console.log(startDate)
+        console.log(selectedActivity.value)
+
+        const baseUrl = 'http://127.0.0.1:8000/predict';
+        const params = new URLSearchParams({
+            lat: lat.toString(),
+            lon: lng.toString(),
+            start_date: start,
+            end_date: end,
+            activity: selectedActivity.value
+        });
+
+        const url = `${baseUrl}?${params.toString()}`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                }
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`API Error: ${response.status} - ${errorData.detail || 'Unknown error'}`);
+            }
+
+            const prediction = await response.json();
+            return prediction;
+        } catch (error) {
+            console.error('Weather prediction failed:', error);
+            throw error;
+        }
     }
 </script>
